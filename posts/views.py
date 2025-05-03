@@ -1,13 +1,16 @@
+# -------------------   Django imports ------------------------
+from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 # -------------------   DRF imports ------------------------
-from rest_framework import generics
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.filters import SearchFilter, OrderingFilter
 # -------------------   Apps imports ------------------------
-from .models import Category, Post, Comment, LikeDislike, Report
-from .serializers import CategorySerializer, PostSerializer, CommentSerializer, LikeDislikeSerializer, ReportSerializer
+from .models import Category, Post, Comment, PostLikeDislike, CommentLikeDislike, Report
+from .serializers import CategorySerializer, PostSerializer, CommentSerializer, PostLikeDislikeSerializer,CommentLikeDislikeSerializer, ReportSerializer
+from .permissions import IsOwnerOrReadOnly, IsAdminOrReadOnly
 from utility.views import BaseAPIView
-
 
 ##################################################################################
 #                               Category Views                                   #
@@ -16,64 +19,55 @@ from utility.views import BaseAPIView
 class CategoryListCreateView(BaseAPIView, generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
-    
-    def get_categories(self, request):
-        """Get a list of categories."""
-        categories = self.get_queryset()
-        serializer = self.get_serializer(categories, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    permission_classes = [IsAdminOrReadOnly] 
 
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "message": "دسته‌بندی با موفقیت ساخته شد ",
+                "data": response.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                "message": "خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
 
-    def create_category(self, request):
-        """Create a new category. (Only admin users can create.)"""
-        if not request.user.is_staff:
-            return Response({"message": "فقط مدیران سایت می‌توانند دسته‌بندی جدید بسازند."}, status=status.HTTP_403_FORBIDDEN)
-        
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "دسته‌بندی جدید با موفقیت ساخته شد."}, status=status.HTTP_201_CREATED)
-        
-        return Response({"message": "ساخت دسته‌بندی ناموفق بود. لطفاً داده‌ها را بررسی کنید."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        
 class CategoryDetailView(BaseAPIView, generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
-    
-    def get_category(self, request, pk):
-        """Retrieve a specific category."""
-        category = self.get_object()
-        serializer = self.get_serializer(category)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    permission_classes = [IsAdminOrReadOnly] 
 
-
-    def update_category(self, request, pk):
-        """Update a category (only for admins)."""
-        if not request.user.is_staff:
-            return Response({"message": "فقط مدیران سایت می‌توانند دسته‌بندی را بروزرسانی کنند."}, status=status.HTTP_403_FORBIDDEN)
-
-        category = self.get_object()
-        serializer = self.get_serializer(category, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "دسته‌بندی با موفقیت بروزرسانی شد."}, status=status.HTTP_200_OK)
-        
-        return Response({"message": "بروزرسانی دسته‌بندی ناموفق بود. لطفاً داده‌ها را بررسی کنید."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-    def delete_category(self, request, pk):
-        """Delete a category (only for admins)."""
-        if not request.user.is_staff:
-            return Response({"message": "فقط مدیران سایت می‌توانند دسته‌بندی را حذف کنند."}, status=status.HTTP_403_FORBIDDEN)
-        
-        category = self.get_object()
-        category.delete()
-        return Response({"message": "دسته‌بندی با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
-
-
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "message": "دسته‌بندی با موفقیت به‌روزرسانی شد ",
+                "data": response.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                "message": "به‌روزرسانی انجام نشد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            instance.delete()
+            return Response({
+                "message": "دسته‌بندی با موفقیت حذف شد "
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response({
+                "message": "حذف انجام نشد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 ##################################################################################
 #                                Posts Views                                     #
@@ -82,228 +76,190 @@ class CategoryDetailView(BaseAPIView, generics.RetrieveUpdateDestroyAPIView):
 class PostListCreateView(BaseAPIView, generics.ListCreateAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['category', 'author']
+    search_fields = ['title', 'content']
+    ordering_fields = ['created_at', 'updated_at']
+    
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
-    def get_posts(self, request):
-        """Get a list of posts."""
-        posts = self.get_queryset()
-        serializer = self.get_serializer(posts, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    def create_post(self, request):
-        """Create a new post."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای ایجاد پست باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(author=request.user) 
-            return Response({"message": "پست جدید با موفقیت ایجاد شد."}, status=status.HTTP_201_CREATED)
-        
-        return Response({"message": "ایجاد پست ناموفق بود. لطفاً داده‌ها را بررسی کنید."}, status=status.HTTP_400_BAD_REQUEST)
-    
-    
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "message": "پست با موفقیت ساخته شد ",
+                "data": response.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                "message": "خطایی در ساخت پست رخ داد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class PostDetailView(BaseAPIView, generics.RetrieveUpdateDestroyAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = [AllowAny]
-    
-    def get_post(self, request, pk):
-        """Retrieve a specific post."""
-        post = self.get_object()
-        serializer = self.get_serializer(post)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    
-    def update_post(self, request, pk):
-        """Update a post (only for the post's author)."""
-        if not request.user.is_authenticated:
-            return Response({"message": "برای بروزرسانی پست باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
-        post = self.get_object()
-        if post.author != request.user:
-            return Response({"message": "شما مجاز به بروزرسانی پست دیگران نیستید."}, status=status.HTTP_403_FORBIDDEN)
-
-        serializer = self.get_serializer(post, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "پست با موفقیت بروزرسانی شد."}, status=status.HTTP_200_OK)
-        
-        return Response({"message": "بروزرسانی پست ناموفق بود. لطفاً داده‌ها را بررسی کنید."}, status=status.HTTP_400_BAD_REQUEST)
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "message": "پست با موفقیت به روزرسانی شد ",
+                "data": response.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                "message": "خطایی در به روزرسانی پست رخ داد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
-    def delete_post(self, request, pk):
-        """Delete a post (only for the post's author)."""
-        if not request.user.is_authenticated:
-            return Response({"message": "برای حذف پست باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
+    def destroy(self, request, *args, **kwargs):
+        try:
+            post = self.get_object()
+            post.delete()
+            return Response({
+                "message": "پست با موفقیت حذف شد "
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response({
+                "message": "خطایی در حذف پست رخ داد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        post = self.get_object()
-        if post.author != request.user:
-            return Response({"message": "شما مجاز به حذف پست دیگران نیستید."}, status=status.HTTP_403_FORBIDDEN)
 
-        post.delete()
-        return Response({"message": "پست با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
-    
-    
 ##################################################################################
 #                                Comments Views                                  #
 ##################################################################################
 
 class CommentListCreateView(BaseAPIView, generics.ListCreateAPIView):
-    queryset = Comment.objects.all()
     serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
-    def get_comment(self, request):
-        """Get a list of comments."""
-        comments = self.get_queryset()
-        serializer = self.get_serializer(comments, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def get_queryset(self):
+        post_id = self.kwargs["post_id"]
+        return Comment.objects.filter(post__id=post_id)
 
+    def perform_create(self, serializer):
+        post_id = self.kwargs["post_id"]
+        post = get_object_or_404(Post, id=post_id)
+        serializer.save(author=self.request.user, post=post)
 
-    def create_comment(self, request):
-        """Create a new comment."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای ثبت کامنت باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)  
-             
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(author=request.user)
-            return Response({"message": "کامنت شما ثبت شد."}, status=status.HTTP_201_CREATED)
-        
-        return Response({"message": "کامنت شما ثبت نشد. لطفاً داده‌ها را بررسی کنید."}, status=status.HTTP_400_BAD_REQUEST)  
- 
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({
+                "message": "کامنت با موفقیت ثبت شد ",
+                "data": response.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                "message": "ثبت کامنت انجام نشد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 class CommentDetailView(BaseAPIView, generics.RetrieveUpdateDestroyAPIView):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
-    
-    def get_comment(self, request, *args, **kwargs):
-        """Get a specific comment."""
-        comment = self.get_object()
-        serializer = self.get_serializer(comment)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({
+                "message": "کامنت با موفقیت به‌روزرسانی شد ",
+                "data": response.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                "message": "به‌روزرسانی کامنت انجام نشد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            comment = self.get_object()
+            comment.delete()
+            return Response({
+                "message": "کامنت با موفقیت حذف شد "
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response({
+                "message": "حذف کامنت انجام نشد. لطفاً دوباره تلاش کنید.",
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+##################################################################################
+#                         Post Like/Dislike Views                                #
+##################################################################################
+
+class PostLikeDislikeView(BaseAPIView, generics.GenericAPIView):
+    serializer_class = PostLikeDislikeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id, *args, **kwargs):
+        post = get_object_or_404(Post, id=post_id)
+        is_like = request.data.get("is_like")
+
+        if is_like is None:
+            return Response({"error": "فیلد is_like الزامی است."}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj, created = PostLikeDislike.objects.update_or_create(
+            user=request.user,
+            post=post,
+            defaults={"is_like": is_like}
+        )
+
+        serializer = self.get_serializer(obj)
+        message = "رای ثبت شد " if created else "رای به‌روزرسانی شد "
+
+        return Response({
+            "message": message,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+        
+##################################################################################
+#                         Comment Like/Dislike Views                             #
+##################################################################################
+
+class CommentLikeDislikeView(generics.GenericAPIView):
+    serializer_class = CommentLikeDislikeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, comment_id, *args, **kwargs):
+        comment = get_object_or_404(Comment, id=comment_id)
+        is_like = request.data.get("is_like")
+
+        if is_like is None:
+            return Response({"error": "فیلد is_like الزامی است."}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj, created = CommentLikeDislike.objects.update_or_create(
+            user=request.user,
+            comment=comment,
+            defaults={"is_like": is_like}
+        )
+
+        serializer = self.get_serializer(obj)
+        message = "رای ثبت شد " if created else "رای به‌روزرسانی شد "
+
+        return Response({
+            "message": message,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
    
-    
-    def update_comment(self, request, *args, **kwargs):
-        """Update an existing comment."""
-        comment = self.get_object()
-
-        if comment.user != request.user:
-            return Response({"message": "شما نمی‌توانید کامنت دیگران را تغییر دهید."}, status=status.HTTP_403_FORBIDDEN)
-
-        serializer = self.get_serializer(comment, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "کامنت شما با موفقیت به‌روزرسانی شد."}, status=status.HTTP_200_OK)
-        
-        return Response({"message": "به‌روزرسانی کامنت با مشکل مواجه شد."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-    def delete_comment(self, request, *args, **kwargs):
-        """Delete a comment."""
-        comment = self.get_object()
-        
-        if comment.user != request.user:
-            return Response({"message": "شما نمی‌توانید کامنت دیگران را حذف کنید."}, status=status.HTTP_403_FORBIDDEN)
-        
-        comment.delete()
-        return Response({"message": "کامنت شما با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
-
-
-##################################################################################
-#                         Like and Dislike Views                                 #
-##################################################################################
-
-class PostLikeDislikeView(BaseAPIView, generics.ListCreateAPIView):
-    queryset = LikeDislike.objects.all()
-    serializer_class = LikeDislikeSerializer
-
-    def get_like_dislike(self, request, post_id):
-        """Get a list of likes and dislikes for a specific post."""
-        post = Post.objects.get(id=post_id)
-        likes_dislikes = LikeDislike.objects.filter(post=post)
-        serializer = self.get_serializer(likes_dislikes, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def create_like_dislike(self, request, post_id):
-        """Create a new like or dislike on a post."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای ثبت لایک یا دیسلایک باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        post = Post.objects.get(id=post_id)
-        reaction = request.data.get('reaction')
-        if reaction not in ['like', 'dislike']:
-            return Response({"message": "لطفاً انتخاب صحیح انجام دهید: 'like' یا 'dislike'."}, status=status.HTTP_400_BAD_REQUEST)
-
-        like_dislike, created = LikeDislike.objects.update_or_create(user=request.user, post=post, defaults={'reaction': reaction})
-        if created:
-            return Response({"message": f"پست با موفقیت {reaction} شد."}, status=status.HTTP_201_CREATED)
-        else:
-            return Response({"message": f"پست شما به {reaction} تغییر یافت."}, status=status.HTTP_200_OK)
-
-
-    def delete_like_dislike(self, request, post_id):
-        """Delete a like or dislike from a post."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای حذف لایک یا دیسلایک باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        post = Post.objects.get(id=post_id)
-
-        try:
-            like_dislike = LikeDislike.objects.get(user=request.user, post=post)
-        except LikeDislike.DoesNotExist:
-            return Response({"message": "شما هیچ لایک یا دیسلایکی برای این پست ثبت نکرده‌اید."},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        like_dislike.delete()
-        return Response({"message": "لایک یا دیسلایک شما با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
-
-
-class CommentLikeDislikeView(BaseAPIView, generics.ListCreateAPIView):
-    queryset = LikeDislike.objects.all()
-    serializer_class = LikeDislikeSerializer
-
-    def get_like_dislike(self, request, comment_id):
-        """Get a list of likes and dislikes for a specific comment."""
-        comment = Comment.objects.get(id=comment_id)
-        likes_dislikes = LikeDislike.objects.filter(comment=comment)
-        serializer = self.get_serializer(likes_dislikes, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-    def create_like_dislike(self, request, comment_id):
-        """Create a new like or dislike on a comment."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای ثبت لایک یا دیسلایک باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        comment = Comment.objects.get(id=comment_id)
-        reaction = request.data.get('reaction')
-
-        if reaction not in ['like', 'dislike']:
-            return Response({"message": "لطفاً انتخاب صحیح انجام دهید: 'like' یا 'dislike'."}, status=status.HTTP_400_BAD_REQUEST)
-
-        like_dislike, created = LikeDislike.objects.update_or_create(user=request.user, comment=comment, defaults={'reaction': reaction})
-
-        if created:
-            return Response({"message": f"کامنت با موفقیت {reaction} شد."}, status=status.HTTP_201_CREATED)
-        else:
-            return Response({"message": f"کامنت شما به {reaction} تغییر یافت."}, status=status.HTTP_200_OK)
-
-
-    def delete_like_dislike(self, request, comment_id):
-        """Delete a like or dislike from a comment."""
-        if not request.user.is_authenticated or request.user.is_staff:
-            return Response({"message": "برای حذف لایک یا دیسلایک باید وارد حساب کاربری خود شوید."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        comment = Comment.objects.get(id=comment_id)
-
-        try:
-            like_dislike = LikeDislike.objects.get(user=request.user, comment=comment)
-        except LikeDislike.DoesNotExist:
-            return Response({"message": "شما هیچ لایک یا دیسلایکی برای این کامنت ثبت نکرده‌اید."}, status=status.HTTP_404_NOT_FOUND)
-
-        like_dislike.delete()
-        return Response({"message": "لایک یا دیسلایک شما با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
 
 ##################################################################################
 #                                Report Views                                    #
@@ -321,7 +277,12 @@ class ReportView(BaseAPIView, generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save(user=request.user)
-            return Response({"message": " گزارش شما با موفقیت ارسال شد."}, status=status.HTTP_201_CREATED)
+            return Response({
+                "message": " گزارش شما با موفقیت ارسال شد."
+                }, status=status.HTTP_201_CREATED)
         
         else:
-            return Response({"message": " خطا پیش آمده، لطفاً مجدداً بررسی کنید.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "message": " خطا پیش آمده، لطفاً مجدداً بررسی کنید.", 
+                "errors": serializer.errors
+                },status=status.HTTP_400_BAD_REQUEST)

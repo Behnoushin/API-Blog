@@ -41,25 +41,36 @@ class Comment(BaseModel):
         return f"comment by {self.author.username} on {self.post.title}"
 
 ##################################################################################
-#                           Like/Diskike Model                                   #
+#                          Post Like/Diskike Model                               #
 ##################################################################################
-   
-class LikeDislike(BaseModel):
-    REACTION_CHOICES = [
-        ('LIKE', 'Like'),
-        ('DISLIKE', 'Dislike'),
-    ]
 
+class PostLikeDislike(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, null=True, blank=True, related_name='likes_dislikes', on_delete=models.CASCADE)
-    comment = models.ForeignKey(Comment, null=True, blank=True, related_name='likes_dislikes', on_delete=models.CASCADE)
-    reaction = models.CharField(max_length=7, choices=REACTION_CHOICES)
-    
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='likes_dislikes')
+    is_like = models.BooleanField()
+
     class Meta:
-        unique_together = ('user', 'post', 'comment')
+        unique_together = ('user', 'post')
 
     def __str__(self):
-        return f"{self.user.username}-{self.reaction}-{'post' if self.post else 'comment'}"
+        return f"{self.user.username} - {'Like' if self.is_like else 'Dislike'} - Post: {self.post.id}"
+
+
+##################################################################################
+#                         Comment Like/Diskike Model                             #
+##################################################################################
+
+class CommentLikeDislike(BaseModel):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name='likes_dislikes')
+    is_like = models.BooleanField()
+
+    class Meta:
+        unique_together = ('user', 'comment')
+
+    def __str__(self):
+        return f"{self.user.username} - {'Like' if self.is_like else 'Dislike'} - Comment: {self.comment.id}"
+
     
 ##################################################################################
 #                           Report Model                                         #

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Post, Comment, LikeDislike, Report
+from .models import Category, Post, Comment, PostLikeDislike, CommentLikeDislike, Report
 from utility.serializers import BaseSerializer
 
 ##################################################################################
@@ -30,13 +30,23 @@ class CommentSerializer(BaseSerializer):
         fields = "__all__"
 
 ##################################################################################
-#                           Like/Dislike serializers                             #
+#                        Post Like/Diskike serializers                           #
 ##################################################################################
 
-class LikeDislikeSerializer(BaseSerializer):
+class PostLikeDislikeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = LikeDislike
+        model = PostLikeDislike
         fields = "__all__"
+ 
+##################################################################################
+#                      Comment Like/Diskike serializers                          #
+##################################################################################       
+
+class CommentLikeDislikeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommentLikeDislike
+        fields = "__all__"
+
         
 ##################################################################################
 #                           Report serializers                                   #

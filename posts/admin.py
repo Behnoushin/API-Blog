@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, Post, Comment, LikeDislike, Report
+from .models import Category, Post, Comment, PostLikeDislike, CommentLikeDislike, Report
 
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'created_at', 'updated_at']
@@ -25,13 +25,22 @@ class CommentAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at']
     list_per_page = 20
     
-class LikeDislikeAdmin(admin.ModelAdmin):
-    list_display = ['user', 'post', 'comment', 'reaction']
-    search_fields = ['user__username', 'post__title', 'comment__content']
-    ordering = ['-reaction']  
-    list_filter = ['reaction', 'user', 'post', 'comment']
+class PostLikeDislikeAdmin(admin.ModelAdmin):
+    list_display = ['user', 'post', 'is_like']
+    search_fields = ['user__username', 'post__title']
+    list_filter = ['is_like', 'user', 'post']
     readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-is_like']
     list_per_page = 20
+
+class CommentLikeDislikeAdmin(admin.ModelAdmin):
+    list_display = ['user', 'comment', 'is_like']
+    search_fields = ['user__username', 'comment__content']
+    list_filter = ['is_like', 'user', 'comment']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['-is_like']
+    list_per_page = 20
+
     
 class ReportAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'post', 'comment', 'reason', 'created_at']
@@ -44,5 +53,6 @@ class ReportAdmin(admin.ModelAdmin):
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(Post, PostAdmin)
 admin.site.register(Comment, CommentAdmin)
-admin.site.register(LikeDislike, LikeDislikeAdmin)
+admin.site.register(PostLikeDislike, PostLikeDislikeAdmin)
+admin.site.register(CommentLikeDislike, CommentLikeDislikeAdmin)
 admin.site.register(Report, ReportAdmin)
